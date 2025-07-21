@@ -14,6 +14,7 @@ import (
 
 type EventConstructor func() any
 
+// generics for event creation, woohoo
 func eventStructFunc[V any]() EventConstructor {
 	return func() any {
 		return new(V)
@@ -63,8 +64,10 @@ var (
 	}
 )
 
+// Context is a map of context data (Dict[string, any] in Python)
 type Context map[string]any
 
+// Client is an implementation of a Wyoming Client
 type Client interface {
 	handler.HandlerInterface
 	Write(event Eventable) error
@@ -82,6 +85,7 @@ type client struct {
 	writeLock *sync.Mutex
 }
 
+// New creates a new client and handler stack given the uri to a server, and then attempts to connect
 func New(uri string) (Client, error) {
 	c := &client{
 		Handler:   handler.New(),
@@ -96,6 +100,8 @@ func New(uri string) (Client, error) {
 	return c, nil
 }
 
+// Connect will take the connection uri and attempt a connection
+// Note: New automatically connects to the server for you.
 func (c *client) Connect() error {
 	u, err := url.Parse(c.uri)
 
@@ -131,6 +137,7 @@ func (c *client) Connect() error {
 	return nil
 }
 
+// Run processes data from the reader, turning the data into events
 func (c *client) Run() {
 	for {
 		line, err := c.reader.ReadString('\n')
@@ -208,6 +215,9 @@ func (c *client) handleEvent(header IncomingEvent, data, payload []byte) {
 	c.Call(v)
 }
 
+// Write sends a single connection.
+// This function is protected by a write lock to avoid sending other events in the middle of an existing event.
+// While unlikely if used properly, this makes the library thread-safe.
 func (c *client) Write(e Eventable) error {
 	c.writeLock.Lock()
 	defer c.writeLock.Unlock()
@@ -248,6 +258,7 @@ func (c *client) Write(e Eventable) error {
 	return c.writer.Flush()
 }
 
+// WriteChan reads from a channel of events and sends them
 func (c *client) WriteChan(events chan Eventable) error {
 	for e := range events {
 		if err := c.Write(e); err != nil {
@@ -258,6 +269,7 @@ func (c *client) WriteChan(events chan Eventable) error {
 	return nil
 }
 
+// WriteMultiple functions the same as WriteChan, but takes a variable number of events
 func (c *client) WriteMultiple(events ...Eventable) error {
 	for _, event := range events {
 		if err := c.Write(event); err != nil {
@@ -268,6 +280,7 @@ func (c *client) WriteMultiple(events ...Eventable) error {
 	return nil
 }
 
+// Close will force the connection to close
 func (c *client) Close() error {
 	return c.closer.Close()
 }
