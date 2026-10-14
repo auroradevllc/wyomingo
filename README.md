@@ -34,6 +34,15 @@ generating PCM audio will work. The library does no processing of return audio.
 
 Any convenience functionality will be written around beep, such as `StreamerToChunks`.
 
+Incoming audio (`AudioStart`, `AudioChunk`, `AudioStop`) can be received like any other event. Register audio
+handlers with `AddSyncHandler`: `AddHandler` runs each event on its own goroutine, so chunks would arrive out of order.
+
+```go
+c.AddSyncHandler(func(e *wyoming.AudioChunk) {
+	// e.Audio holds the raw PCM described by e.AudioFormat
+})
+```
+
 Example
 -------
 

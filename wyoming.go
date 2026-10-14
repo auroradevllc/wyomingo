@@ -2,14 +2,16 @@ package wyoming
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
-	"github.com/auroradevllc/handler"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"net"
 	"net/url"
 	"sync"
+
+	"github.com/auroradevllc/handler"
+	log "github.com/sirupsen/logrus"
 )
 
 type EventConstructor func() any
@@ -27,6 +29,11 @@ var (
 	eventTypes = map[EventType]EventConstructor{
 		// Base events
 		InfoEvent: eventStructFunc[Info](),
+
+		// Audio Events
+		AudioStartEvent: eventStructFunc[AudioStart](),
+		AudioChunkEvent: eventStructFunc[AudioChunk](),
+		AudioStopEvent:  eventStructFunc[AudioStop](),
 
 		// ASR Events
 		TranscriptEvent:      eventStructFunc[Transcript](),
@@ -74,6 +81,7 @@ type Client interface {
 	WriteChan(events chan Eventable) error
 	WriteMultiple(events ...Eventable) error
 	Run()
+	Close() error
 }
 
 type client struct {
@@ -87,13 +95,18 @@ type client struct {
 
 // New creates a new client and handler stack given the uri to a server, and then attempts to connect
 func New(uri string) (Client, error) {
+	return NewWithContext(context.Background(), uri)
+}
+
+// NewWithContext is like New, but the connection attempt is bounded by ctx.
+func NewWithContext(ctx context.Context, uri string) (Client, error) {
 	c := &client{
 		Handler:   handler.New(),
 		uri:       uri,
 		writeLock: &sync.Mutex{},
 	}
 
-	if err := c.Connect(); err != nil {
+	if err := c.ConnectContext(ctx); err != nil {
 		return nil, err
 	}
 
@@ -103,36 +116,39 @@ func New(uri string) (Client, error) {
 // Connect will take the connection uri and attempt a connection
 // Note: New automatically connects to the server for you.
 func (c *client) Connect() error {
+	return c.ConnectContext(context.Background())
+}
+
+// ConnectContext is like Connect, but the connection attempt is bounded by ctx.
+func (c *client) ConnectContext(ctx context.Context) error {
 	u, err := url.Parse(c.uri)
 
 	if err != nil {
 		return err
 	}
 
+	var network, address string
+
 	switch u.Scheme {
 	case "tcp":
-		conn, err := net.Dial("tcp", u.Host)
-
-		if err != nil {
-			return err
-		}
-
-		c.reader = bufio.NewReader(conn)
-		c.writer = bufio.NewWriter(conn)
-		c.closer = conn
+		network, address = "tcp", u.Host
 	case "unix":
-		conn, err := net.Dial("unix", u.Path)
-
-		if err != nil {
-			return err
-		}
-
-		c.reader = bufio.NewReader(conn)
-		c.writer = bufio.NewWriter(conn)
-		c.closer = conn
+		network, address = "unix", u.Path
 	default:
 		return ErrUnsupportedScheme
 	}
+
+	var dialer net.Dialer
+
+	conn, err := dialer.DialContext(ctx, network, address)
+
+	if err != nil {
+		return err
+	}
+
+	c.reader = bufio.NewReader(conn)
+	c.writer = bufio.NewWriter(conn)
+	c.closer = conn
 
 	return nil
 }

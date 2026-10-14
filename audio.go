@@ -2,6 +2,7 @@ package wyoming
 
 import (
 	"fmt"
+
 	"github.com/gopxl/beep/v2"
 )
 
@@ -23,7 +24,8 @@ type AudioChunk struct {
 	Timestamp int64  `json:"timestamp,omitempty"`
 }
 
-func (c AudioChunk) SetPayload(b []byte) {
+// SetPayload stores the received audio. It has a pointer receiver so decoding incoming events can set it.
+func (c *AudioChunk) SetPayload(b []byte) {
 	c.Audio = b
 }
 
